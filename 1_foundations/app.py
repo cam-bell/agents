@@ -5,6 +5,8 @@ import os
 import requests
 from pypdf import PdfReader
 import gradio as gr
+import sqlite3
+import re
 
 
 load_dotenv(override=True)
@@ -92,6 +94,56 @@ class Me:
                 self.cv += text
         with open("me/summary2.txt", "r", encoding="utf-8") as f:
             self.summary = f.read()
+        
+        # Initialize SQLite database
+        self.conn = sqlite3.connect('qa_database.db')
+        self.cursor = self.conn.cursor()
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize Q&A database with sample data"""
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS qa (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question TEXT UNIQUE,
+                answer TEXT,
+                category TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        sample_qa = [
+            ("Where are you from?", "I'm from Southampton, Bermuda, but I've lived in England for 10 years and Madrid, Spain for a year during my MSc.", "background"),
+            ("What's your educational background?", "I attended Ardingly College for boarding school, completed my International Baccalaureate, then went to University of Bristol for my MSc in Computer Science and Business Technology.", "education"),
+            ("What are your hobbies?", "I love all foods, particularly trying new cuisine. I'm also a gym enthusiast and enjoy weights and calisthenics. I'm a big football fan too!", "personal"),
+            ("Why did you move back to Bermuda?", "In 2022, I returned to Bermuda to be with my ageing grandfather and support my family.", "background"),
+        ]
+        
+        for q, a, cat in sample_qa:
+            self.cursor.execute("INSERT OR IGNORE INTO qa (question, answer, category) VALUES (?, ?, ?)", (q, a, cat))
+        
+        self.conn.commit()
+    
+    def search_qa(self, user_query, limit=3):
+        """Search for relevant Q&A based on keyword matching"""
+        keywords = re.findall(r'\b\w+\b', user_query.lower())
+        keyword_pattern = '%' + '%'.join(keywords[:3]) + '%'
+        
+        self.cursor.execute('''
+            SELECT question, answer, category 
+            FROM qa 
+            WHERE question LIKE ? OR answer LIKE ?
+            LIMIT ?
+        ''', (keyword_pattern, keyword_pattern, limit))
+        
+        results = self.cursor.fetchall()
+        
+        if results:
+            context = "Relevant Q&A from knowledge base:\n"
+            for q, a, cat in results:
+                context += f"Q: {q}\nA: {a}\n\n"
+            return context
+        return None
 
 
     def handle_tool_call(self, tool_calls):
@@ -105,7 +157,7 @@ class Me:
             results.append({"role": "tool","content": json.dumps(result),"tool_call_id": tool_call.id})
         return results
     
-    def system_prompt(self):
+    def system_prompt(self, qa_context=""):
         system_prompt = f"You are acting as {self.name}. You are answering questions on {self.name}'s website, \
 particularly questions related to {self.name}'s career, background, skills and experience. \
 Your responsibility is to represent {self.name} for interactions on the website as faithfully as possible. \
@@ -115,11 +167,21 @@ If you don't know the answer to any question, use your record_unknown_question t
 If the user is engaging in discussion, try to steer them towards getting in touch via email; ask for their email and record it using your record_user_details tool. "
 
         system_prompt += f"\n\n## Summary:\n{self.summary}\n\n## LinkedIn Profile:\n{self.linkedin}\n\n## CV:\n{self.cv}\n\n"
+        
+        if qa_context:
+            system_prompt += f"\n{qa_context}\n"
+        
         system_prompt += f"With this context, please chat with the user, always staying in character as {self.name}."
         return system_prompt
     
     def chat(self, message, history):
-        messages = [{"role": "system", "content": self.system_prompt()}] + history + [{"role": "user", "content": message}]
+        # Search Q&A database for relevant context
+        qa_context = self.search_qa(message)
+        
+        # Build system prompt with Q&A context
+        prompt = self.system_prompt(qa_context)
+        
+        messages = [{"role": "system", "content": prompt}] + history + [{"role": "user", "content": message}]
         done = False
         while not done:
             response = self.openai.chat.completions.create(model="gpt-4o-mini", messages=messages, tools=tools)
