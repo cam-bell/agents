@@ -1,0 +1,166 @@
+import gradio as gr
+from dotenv import load_dotenv
+from research_manager import ResearchManager
+
+load_dotenv(override=True)
+
+MAX_QUESTIONS = 3
+
+async def start_clarification(query: str, qa_history: list):
+    """Step 1: Start the clarification process by generating first question"""
+    if not query.strip():
+        return (
+            "❌ Please enter a research query first.", 
+            gr.update(visible=False),
+            gr.update(visible=False),
+            qa_history,
+            query
+        )
+    
+    manager = ResearchManager()
+    
+    # Generate first question
+    question_obj = await manager.generate_clarifying_question(query, [])
+    
+    # Format for display
+    question_md = f"## 🤔 Clarifying Question 1 of {MAX_QUESTIONS}\n\n"
+    question_md += f"**{question_obj.question}**\n\n"
+    question_md += f"*Why we're asking: {question_obj.why_asking}*\n\n"
+    question_md += "Please provide your answer below (or leave blank to skip):"
+    
+    return (
+        question_md,
+        gr.update(visible=True),  # Show answer section
+        gr.update(visible=True),  # Show submit button
+        [(question_obj.question, "")],  # Initialize QA history
+        query  # Store original query
+    )
+
+async def handle_answer(query: str, answer: str, qa_history: list):
+    """Handle user's answer and either ask next question or start research"""
+    if not qa_history:
+        yield (
+            "Error: No question in progress",
+            gr.update(),
+            gr.update(),
+            qa_history,
+            ""
+        )
+        return
+    
+    # Update the last question with the answer
+    qa_history[-1] = (qa_history[-1][0], answer.strip())
+    
+    manager = ResearchManager()
+    
+    # Check if we've asked 3 questions
+    if len(qa_history) >= MAX_QUESTIONS:
+        # Time to start research!
+        yield (
+            f"✅ All {MAX_QUESTIONS} questions answered! Starting research...",
+            gr.update(visible=False),
+            gr.update(visible=False),
+            qa_history,
+            ""
+        )
+        
+        # Create enriched query and run research
+        enriched_query = manager.enrich_query(query, qa_history)
+        
+        async for chunk in manager.run(enriched_query):
+            yield (
+                chunk,
+                gr.update(visible=False),
+                gr.update(visible=False),
+                qa_history,
+                ""
+            )
+        return
+    
+    # Generate next question
+    question_num = len(qa_history) + 1
+    question_obj = await manager.generate_clarifying_question(query, qa_history)
+    
+    # Add new question to history
+    qa_history.append((question_obj.question, ""))
+    
+    # Format for display
+    question_md = f"## 🤔 Clarifying Question {question_num} of {MAX_QUESTIONS}\n\n"
+    
+    # Show previous Q&A
+    question_md += "### Previous answers:\n"
+    for i, (q, a) in enumerate(qa_history[:-1], 1):
+        question_md += f"{i}. **{q}**\n"
+        if a:
+            question_md += f"   ✓ {a}\n\n"
+        else:
+            question_md += "   *(skipped)*\n\n"
+    
+    question_md += "---\n\n"
+    question_md += f"**{question_obj.question}**\n\n"
+    question_md += f"*Why we're asking: {question_obj.why_asking}*\n\n"
+    question_md += "Please provide your answer below (or leave blank to skip):"
+    
+    yield (
+        question_md,
+        gr.update(visible=True, value=""),  # Clear answer box
+        gr.update(visible=True),
+        qa_history,
+        query
+    )
+
+# Build UI
+with gr.Blocks() as ui:
+    gr.Markdown("# 🔬 Deep Research (with Sequential Clarifying Questions)")
+    gr.Markdown("*Ask questions one at a time, building context as we go*")
+    
+    # Hidden state
+    qa_history_state = gr.State([])
+    query_state = gr.State("")
+    
+    with gr.Row():
+        query_textbox = gr.Textbox(
+            label="What topic would you like to research?",
+            placeholder="e.g., What are the most exciting commercial applications of Autonomous Agentic AI?",
+            lines=3
+        )
+    
+    start_btn = gr.Button("🚀 Start Research with Clarifying Questions", variant="primary", size="lg")
+    
+    conversation_display = gr.Markdown(label="Conversation", visible=True)
+    
+    with gr.Column(visible=False) as answer_section:
+        answer_box = gr.Textbox(
+            label="Your Answer",
+            placeholder="Type your answer here, or leave blank to skip...",
+            lines=3
+        )
+        submit_btn = gr.Button("Submit Answer & Continue", variant="primary")
+    
+    # Wire up events
+    start_btn.click(
+        fn=start_clarification,
+        inputs=[query_textbox, qa_history_state],
+        outputs=[conversation_display, answer_section, submit_btn, qa_history_state, query_state]
+    )
+    
+    submit_btn.click(
+        fn=handle_answer,
+        inputs=[query_state, answer_box, qa_history_state],
+        outputs=[conversation_display, answer_section, submit_btn, qa_history_state, answer_box]
+    )
+    
+    # Allow Enter key to submit
+    answer_box.submit(
+        fn=handle_answer,
+        inputs=[query_state, answer_box, qa_history_state],
+        outputs=[
+            conversation_display,
+            answer_section,
+            submit_btn,
+            qa_history_state,
+            answer_box
+        ]
+    )
+
+ui.launch(inbrowser=True)
