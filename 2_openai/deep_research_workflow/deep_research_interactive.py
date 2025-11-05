@@ -6,35 +6,51 @@ load_dotenv(override=True)
 
 MAX_QUESTIONS = 3
 
+
+async def reset_research():
+    """Reset all state to start a new research session"""
+    return (
+        "",  # Clear conversation display
+        gr.update(visible=False),  # Hide answer section
+        gr.update(visible=False),  # Hide submit button
+        [],  # Clear QA history
+        "",  # Clear query state
+        gr.update(visible=False),  # Hide reset button
+    )
+
+
 async def start_clarification(query: str, qa_history: list):
     """Step 1: Start the clarification process by generating first question"""
     if not query.strip():
         return (
-            "❌ Please enter a research query first.", 
+            "❌ Please enter a research query first.",
             gr.update(visible=False),
             gr.update(visible=False),
             qa_history,
-            query
+            query,
+            gr.update(visible=False),  # Reset button
         )
-    
+
     manager = ResearchManager()
-    
+
     # Generate first question
     question_obj = await manager.generate_clarifying_question(query, [])
-    
+
     # Format for display
     question_md = f"## 🤔 Clarifying Question 1 of {MAX_QUESTIONS}\n\n"
     question_md += f"**{question_obj.question}**\n\n"
     question_md += f"*Why we're asking: {question_obj.why_asking}*\n\n"
     question_md += "Please provide your answer below (or leave blank to skip):"
-    
+
     return (
         question_md,
         gr.update(visible=True),  # Show answer section
         gr.update(visible=True),  # Show submit button
         [(question_obj.question, "")],  # Initialize QA history
-        query  # Store original query
+        query,  # Store original query
+        gr.update(visible=False),  # Hide reset button during Q&A
     )
+
 
 async def handle_answer(query: str, answer: str, qa_history: list):
     """Handle user's answer and either ask next question or start research"""
@@ -44,15 +60,16 @@ async def handle_answer(query: str, answer: str, qa_history: list):
             gr.update(),
             gr.update(),
             qa_history,
-            ""
+            "",
+            gr.update(visible=False),
         )
         return
-    
+
     # Update the last question with the answer
     qa_history[-1] = (qa_history[-1][0], answer.strip())
-    
+
     manager = ResearchManager()
-    
+
     # Check if we've asked 3 questions
     if len(qa_history) >= MAX_QUESTIONS:
         # Time to start research!
@@ -61,32 +78,56 @@ async def handle_answer(query: str, answer: str, qa_history: list):
             gr.update(visible=False),
             gr.update(visible=False),
             qa_history,
-            ""
+            "",
+            gr.update(visible=False),  # Hide reset during research
         )
-        
+
         # Create enriched query and run research
         enriched_query = manager.enrich_query(query, qa_history)
-        
+
+        final_chunk = ""
         async for chunk in manager.run(enriched_query):
+            final_chunk = chunk
             yield (
                 chunk,
                 gr.update(visible=False),
                 gr.update(visible=False),
                 qa_history,
-                ""
+                "",
+                gr.update(visible=False),
             )
+
+        # Show reset button after completion
+        completion_text = (
+            f"{final_chunk}\n\n---\n\n"
+            "✅ **Research Complete!** "
+            "Click 'Start New Research' to begin again."
+        )
+        yield (
+            completion_text,
+            gr.update(visible=False),
+            gr.update(visible=False),
+            qa_history,
+            "",
+            gr.update(visible=True),  # Show reset button
+        )
         return
-    
+
     # Generate next question
     question_num = len(qa_history) + 1
-    question_obj = await manager.generate_clarifying_question(query, qa_history)
-    
+    question_obj = await manager.generate_clarifying_question(
+        query, qa_history
+    )
+
     # Add new question to history
     qa_history.append((question_obj.question, ""))
-    
+
     # Format for display
-    question_md = f"## 🤔 Clarifying Question {question_num} of {MAX_QUESTIONS}\n\n"
-    
+    question_md = (
+        f"## 🤔 Clarifying Question {question_num} "
+        f"of {MAX_QUESTIONS}\n\n"
+    )
+
     # Show previous Q&A
     question_md += "### Previous answers:\n"
     for i, (q, a) in enumerate(qa_history[:-1], 1):
@@ -95,61 +136,109 @@ async def handle_answer(query: str, answer: str, qa_history: list):
             question_md += f"   ✓ {a}\n\n"
         else:
             question_md += "   *(skipped)*\n\n"
-    
+
     question_md += "---\n\n"
     question_md += f"**{question_obj.question}**\n\n"
     question_md += f"*Why we're asking: {question_obj.why_asking}*\n\n"
-    question_md += "Please provide your answer below (or leave blank to skip):"
-    
+    question_md += (
+        "Please provide your answer below (or leave blank to skip):"
+    )
+
     yield (
         question_md,
         gr.update(visible=True, value=""),  # Clear answer box
         gr.update(visible=True),
         qa_history,
-        query
+        query,
+        gr.update(visible=False),  # Keep reset hidden during Q&A
     )
 
 # Build UI
 with gr.Blocks() as ui:
     gr.Markdown("# 🔬 Deep Research (with Sequential Clarifying Questions)")
     gr.Markdown("*Ask questions one at a time, building context as we go*")
-    
+
     # Hidden state
     qa_history_state = gr.State([])
     query_state = gr.State("")
-    
+
     with gr.Row():
         query_textbox = gr.Textbox(
             label="What topic would you like to research?",
-            placeholder="e.g., What are the most exciting commercial applications of Autonomous Agentic AI?",
+            placeholder=(
+                "e.g., What are the most exciting commercial "
+                "applications of Autonomous Agentic AI?"
+            ),
             lines=3
         )
-    
-    start_btn = gr.Button("🚀 Start Research with Clarifying Questions", variant="primary", size="lg")
-    
-    conversation_display = gr.Markdown(label="Conversation", visible=True)
-    
+
+    with gr.Row():
+        start_btn = gr.Button(
+            "🚀 Start Research with Clarifying Questions",
+            variant="primary",
+            size="lg"
+        )
+        reset_btn = gr.Button(
+            "🔄 Start New Research",
+            variant="secondary",
+            size="lg",
+            visible=False
+        )
+
+    conversation_display = gr.Markdown(
+        label="Conversation", visible=True
+    )
+
     with gr.Column(visible=False) as answer_section:
         answer_box = gr.Textbox(
             label="Your Answer",
             placeholder="Type your answer here, or leave blank to skip...",
             lines=3
         )
-        submit_btn = gr.Button("Submit Answer & Continue", variant="primary")
-    
+        submit_btn = gr.Button(
+            "Submit Answer & Continue", variant="primary"
+        )
+
     # Wire up events
     start_btn.click(
         fn=start_clarification,
         inputs=[query_textbox, qa_history_state],
-        outputs=[conversation_display, answer_section, submit_btn, qa_history_state, query_state]
+        outputs=[
+            conversation_display,
+            answer_section,
+            submit_btn,
+            qa_history_state,
+            query_state,
+            reset_btn,
+        ]
     )
-    
+
+    reset_btn.click(
+        fn=reset_research,
+        inputs=[],
+        outputs=[
+            conversation_display,
+            answer_section,
+            submit_btn,
+            qa_history_state,
+            query_state,
+            reset_btn,
+        ]
+    )
+
     submit_btn.click(
         fn=handle_answer,
         inputs=[query_state, answer_box, qa_history_state],
-        outputs=[conversation_display, answer_section, submit_btn, qa_history_state, answer_box]
+        outputs=[
+            conversation_display,
+            answer_section,
+            submit_btn,
+            qa_history_state,
+            answer_box,
+            reset_btn,
+        ]
     )
-    
+
     # Allow Enter key to submit
     answer_box.submit(
         fn=handle_answer,
@@ -159,7 +248,8 @@ with gr.Blocks() as ui:
             answer_section,
             submit_btn,
             qa_history_state,
-            answer_box
+            answer_box,
+            reset_btn,
         ]
     )
 
