@@ -1,0 +1,76 @@
+# tasks.yaml
+
+ingest_unstructured_data:
+  description: >
+    Gather real-time market-moving news and social media chatter about {market_focus}
+    from the last {time_window}. Filter for high-signal content with 95%+ accuracy.
+    Focus on identifying breaking news, sentiment shifts, and emerging narratives.
+  expected_output: >
+    A list of JSON objects containing raw text corpus:
+    [{"source": "Twitter", "text": "Breaking news about..."}, {"source": "NewsAPI", "text": "..."}]
+  agent: datascout
+
+fetch_market_metrics:
+  description: >
+    Retrieve validated real-time market data for assets: {asset_list}.
+    Fetch the following metrics: {metrics}.
+    Ensure data quality with <500ms latency and 99.9% uptime standards.
+  expected_output: >
+    A list of JSON objects with market data:
+    [{"symbol": "AAPL", "price": "180.5", "volume": "50000000", "volatility": "0.25"}, ...]
+  agent: marketdatafetcher
+
+synthesize_sentiment:
+  description: >
+    Analyze the raw text corpus from the data ingestion task.
+    Use NLP and transformer models to extract normalized sentiment scores (-1.0 to +1.0)
+    and identify key themes across multiple languages and sources.
+  expected_output: >
+    A JSON object with normalized sentiment:
+    {"net_score": 0.45, "themes": ["AI Hype", "Interest Rate Worry"]}
+  agent: sentimentanalyst
+  context:
+    - ingest_unstructured_data
+
+calculate_risk_score:
+  description: >
+    Calculate unified risk score (0.0-1.0 scale) using VaR methodology, sentiment weighting,
+    and anomaly detection with 90% confidence intervals.
+    Incorporate market data, sentiment analysis, and Redis context for comprehensive assessment.
+  expected_output: >
+    Risk assessment with score and anomaly flag:
+    {"risk_score": 0.65, "anomaly_flag": false}
+  agent: riskengine
+  context:
+    - fetch_market_metrics
+    - synthesize_sentiment
+
+compile_market_signals:
+  description: >
+    Validate and compile all inputs into a final structured MarketSignals output.
+    Ensure zero schema violations and maintain data quality gates.
+    Include timestamp, assets, net_sentiment, risk_score, and themes.
+  expected_output: >
+    A validated Pydantic MarketSignals JSON object:
+    {"timestamp": "2025-01-15T10:30:00Z", "assets": ["AAPL", "GOOGL"], 
+     "net_sentiment": 0.45, "risk_score": 0.65, "themes": ["AI Hype", "Interest Rate Worry"]}
+  agent: signalsynthesizer
+  context:
+    - fetch_market_metrics
+    - synthesize_sentiment
+    - calculate_risk_score
+  output_pydantic: MarketSignals
+  output_file: output/market_signals.json
+
+conditional_alert:
+  description: >
+    Execute conditional alert logic based on risk score threshold.
+    IF risk_score >= 0.75: Execute AlertCallbackStub with <100ms latency.
+    ELSE: Log only with idempotent delivery.
+    Ensure fault-tolerant notification with retry logic and circuit breakers.
+  expected_output: >
+    Alert status string: "Alert Sent" or "Logged Only"
+  agent: alertmanager
+  context:
+    - compile_market_signals
+  output_file: output/alert.md

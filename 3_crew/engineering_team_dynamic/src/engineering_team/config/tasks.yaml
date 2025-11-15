@@ -1,0 +1,76 @@
+design_task:
+  description: >
+    Analyze the requirements and design a complete module architecture.
+    For each module needed, determine:
+    - Appropriate module name (as a .py filename)
+    - Required classes and their responsibilities
+    - Dependencies between modules
+    - Key methods/functions needed
+
+    Requirements: {requirements}
+
+    Return a structured plan with all necessary modules to fulfill the requirements.
+  expected_output: >
+    A list of module specifications, each containing:
+    - module_name (e.g., "user_manager.py")
+    - purpose (brief description)
+    - classes (list of class names with responsibilities)
+    - dependencies (other modules this depends on)
+  agent: engineering_lead
+  output_file: output/design.md
+
+# Task 2: Backend Implementation
+implementation_task:
+  description: >
+    Write a python module that implements the module with classes and methods according to the structured design described by the engineering lead.
+  expected_output: >
+    A python module that implements the design and achieves the requirements.
+    Complete, self-contained Python module ready for testing
+    IMPORTANT: Output ONLY the raw Python code without any markdown formatting, code block delimiters, or backticks.
+    The output should be valid Python code that can be directly saved to a file and executed.
+  agent: backend_engineer
+  context:
+    - design_task
+
+# Task 3: Code Review
+review_task:
+  description: >
+    Review the implemented module for:
+    - Adherence to architectural design and design specifications
+    - Code quality and best practices    
+    - Performance considerations
+    Provide specific, actionable feedback for any issues found.
+  expected_output: >
+    Code review report with pass/fail status and remediation steps
+  agent: code_reviewer
+  context:
+    - design_task
+    - implementation_task
+
+# Task 4: Unit Tests
+test_task:
+  description: >
+    Write comprehensive unit tests for module(s) in the design and create a test module(s) in the same directory as the backend module(s).
+  expected_output: >
+    Complete test suite in a python script for each module in the design. For example if module is account.py then test module is test_account.py.)
+    IMPORTANT: Output ONLY the raw Python code without any markdown formatting, code block delimiters, or backticks.
+    The output should be valid Python code that can be directly saved to a file and executed.
+  agent: test_engineer
+  context:
+    - implementation_task
+    - review_task
+
+# Task 5: Frontend UI
+frontend_task:
+  description: >
+    Create Gradio UI for the modules in the design that demonstrates the given backend classes in the modules.
+  expected_output: >
+    Gradio app in app.py demonstrating all functionality.
+    The file should be ready so that it can be run as-is, in the same directory as the backend modules, and it should import the backend classes from the modules.
+    IMPORTANT: Output ONLY the raw Python code without any markdown formatting, code block delimiters, or backticks.
+    The output should be valid Python code that can be directly saved to a file and executed.
+  agent: frontend_engineer
+  context:
+    - implementation_task
+    - test_task
+  output_file: output/app.py

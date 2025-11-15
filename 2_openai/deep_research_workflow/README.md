@@ -1,3 +1,9 @@
+---
+title: deep-research-workflow
+app_file: deep_research_interactive.py
+sdk: gradio
+sdk_version: 5.34.2
+---
 # Deep Research Workflow - Enhanced with Agentic Patterns
 
 A production-ready research system demonstrating 5 agentic workflow design patterns.
