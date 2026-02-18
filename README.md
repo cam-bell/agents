@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## Master AI Agentic Engineering -  build autonomous AI Agents
 
 ### 6 week journey to code and deploy AI Agents with OpenAI Agents SDK, CrewAI, LangGraph, AutoGen and MCP
@@ -59,3 +60,11 @@ Be sure to monitor your API costs to ensure you are totally happy with any spend
 ### ABOVE ALL ELSE -
 
 Be sure to have fun with the course! You could not have picked a better time to be learning about Agentic AI. I hope you enjoy every single minute! And if you get stuck at any point - [contact me](https://www.linkedin.com/in/eddonner/).
+=======
+---
+title: career_conversation
+app_file: app.py
+sdk: gradio
+sdk_version: 5.34.2
+---
+>>>>>>> 8cb16fdfa2e66ac044c05c7f868de51394d027db

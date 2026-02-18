@@ -14,9 +14,19 @@ MAX_REVISION_ATTEMPTS = 2
 class ResearchManager:
 
     async def run(
-        self, query: str, clarifying_answers: list[str] | None = None
+        self,
+        query: str,
+        clarifying_answers: list[str] | None = None,
+        route_override: str | None = None,
     ):
-        """Run deep research process, yielding status and final report"""
+        """Run deep research process, yielding status and final report
+        
+        Args:
+            query: The research query
+            clarifying_answers: Optional list of clarifying question answers
+            route_override: Optional route override ("quick", "deep", 
+                          "technical", "comparative"). If None, uses auto-routing.
+        """
         trace_id = gen_trace_id()
         with trace("Research trace", trace_id=trace_id):
             trace_url = (
@@ -34,9 +44,16 @@ class ResearchManager:
                 )
 
             # ROUTING: Determine research approach
-            yield "Analyzing query type..."
-            route = await self.route_query(enriched_query)
-            yield f"Route: {route.route} ({route.reasoning})"
+            if route_override and route_override != "auto":
+                yield f"Using manual route: {route_override}"
+                route = await self.route_query(
+                    enriched_query, route_override=route_override
+                )
+                yield f"Route: {route.route} ({route.reasoning})"
+            else:
+                yield "Analyzing query type (auto-routing)..."
+                route = await self.route_query(enriched_query)
+                yield f"Route: {route.route} ({route.reasoning})"
 
             print("Starting research...")
             search_plan = await self.plan_searches(
@@ -56,8 +73,31 @@ class ResearchManager:
             yield "Email sent, research complete"
             yield report.markdown_report
 
-    async def route_query(self, query: str) -> QueryRoute:
-        """Determine the best research route for the query"""
+    async def route_query(
+        self, query: str, route_override: str | None = None
+    ) -> QueryRoute:
+        """Determine the best research route for the query
+        
+        Args:
+            query: The research query
+            route_override: Optional route override. If provided, uses this
+                          route instead of auto-routing.
+        """
+        if route_override:
+            # Map route to num_searches
+            route_map = {
+                "quick": 3,
+                "deep": 5,
+                "technical": 5,
+                "comparative": 6,
+            }
+            num_searches = route_map.get(route_override, 5)
+            return QueryRoute(
+                route=route_override,
+                reasoning=f"Manually selected {route_override} route",
+                num_searches=num_searches,
+            )
+
         print("Routing query...")
         result = await Runner.run(
             router_agent,

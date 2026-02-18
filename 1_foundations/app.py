@@ -104,7 +104,7 @@ class Me:
         # Load LinkedIn profile
         self.linkedin = self._load_pdf("me/cameronbell2.pdf")
         
-        # Load CVs using helper method (Option 3)
+        # Load CVs using helper method
         self.cvs = {}
         self.cvs["ai_ml_engineer"] = self._load_pdf("me/cameronbell_cv.pdf")
         self.cvs["ml_engineer"] = self._load_pdf("me/cameron_bell_cv_machine_learning_engineer.pdf")
@@ -117,9 +117,12 @@ class Me:
         self._init_rag_systems()
 
         # Initialize SQLite database
-        self.conn = sqlite3.connect('qa_database.db')
-        self.cursor = self.conn.cursor()
         self._init_database()
+        
+    def _get_db_connection(self):
+        """Create a new thread-safe database connection"""
+        return sqlite3.connect('qa_database.db', check_same_thread=False)
+    
     
     def _load_pdf(self, filepath):
         """Helper method to load PDF text"""
@@ -133,6 +136,8 @@ class Me:
     
     def _init_database(self):
         """Initialize Q&A database with sample data"""
+        self.conn = self._get_db_connection()
+        self.cursor = self.conn.cursor()
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS qa (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,17 +162,21 @@ class Me:
     
     def search_qa(self, user_query, limit=3):
         """Search for relevant Q&A based on keyword matching"""
+        conn = self._get_db_connection()
+        cursor = conn.cursor()
+        
         keywords = re.findall(r'\b\w+\b', user_query.lower())
         keyword_pattern = '%' + '%'.join(keywords[:3]) + '%'
         
-        self.cursor.execute('''
+        cursor.execute('''
             SELECT question, answer, category 
             FROM qa 
             WHERE question LIKE ? OR answer LIKE ?
             LIMIT ?
         ''', (keyword_pattern, keyword_pattern, limit))
         
-        results = self.cursor.fetchall()
+        results = cursor.fetchall()
+        conn.close()
         
         if results:
             context = "Relevant Q&A from knowledge base:\n"
