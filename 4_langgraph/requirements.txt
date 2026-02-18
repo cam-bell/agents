@@ -1,0 +1,22 @@
+gradio==5.34.2
+
+# LangGraph + LangChain stack
+langgraph==0.4.9
+langchain==0.3.26
+langchain-core==0.3.66
+langchain-community==0.3.26
+langchain-experimental==0.3.4
+langchain-openai==0.3.25
+
+# Playwright + its python deps
+playwright==1.52.0
+
+# Utilities you import
+python-dotenv==1.1.1
+requests==2.32.5
+pydantic==2.11.10
+typing-extensions==4.14.0
+
+# Wikipedia toolchain (LangChain community wrappers usually pull these,
+# but being explicit avoids surprises)
+wikipedia==1.4.0

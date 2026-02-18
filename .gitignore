@@ -186,3 +186,9 @@ credentials.json
 token.json
 *.json
 !package.json
+
+# 5_autogen generated artifacts (keep repo focused on source code)
+5_autogen/agent[0-9]*.py
+5_autogen/idea[0-9]*.md
+5_autogen/__pycache__/
+5_autogen/*.db
